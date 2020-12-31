@@ -58,6 +58,13 @@ CW(bzip2/bunzip2)  for CG(.bz2) handling
   CW(lzip/lunzip)  for CG(.lz) handling
   CW(zstd/unzstd)  for CG(.zst) handling
 
+INSTALL
+    Put the CG(rezip) file into your CG(/bin) or CG(~/bin).
+
+EXAMPLE
+    CW(rezip file.tgz)  CK(# to rezip given file)
+    CW(rezip *)         CK(# to rezip all files/dirs in current directory)
+
 VERSION
     rezip.0.4 (c) R.Jaksa 2020, GPLv3
 

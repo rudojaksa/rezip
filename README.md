@@ -39,6 +39,13 @@ repo-date.tar with the date of the last modification in the repo.
       lzip/lunzip  for .lz handling
       zstd/unzstd  for .zst handling
 
+### INSTALL
+        Copy the rezip dir into your /bin or ~/bin.
+
+### EXAMPLE
+        rezip file.tgz # to rezip given file
+        rezip * # to rezip all files/dirs in current directory
+
 ### VERSION
 rezip.0.4 (c) R.Jaksa 2020, GPLv3
 
