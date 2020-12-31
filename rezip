@@ -1,0 +1,388 @@
+#!/usr/bin/perl
+
+our $CR_="\033[31m"; # color red
+our $CG_="\033[32m"; # color green
+our $CY_="\033[33m"; # color yellow
+our $CB_="\033[34m"; # color blue
+our $CM_="\033[35m"; # color magenta
+our $CC_="\033[36m"; # color cyan
+our $CW_="\033[37m"; # color white
+our $CK_="\033[90m"; # color black
+our $CD_="\033[0m";  # color default
+
+# ----------------------------------------------------------------------------- DEFAULTS
+
+our $ALG = "lz"; # default output format
+
+# --------------------------------------------------------------------------------- HELP
+$HELPMAN=<<EOF;
+
+NAME
+    rezip - rezip file into other (.$ALG) format
+
+USAGE
+    rezip [CC(OPTIONS)] CC(FILE)/CC(DIR)...
+
+DESCRIPTION
+    Unzip and zip again input files into specified format.  Unless it is
+    requested by CC(-f), directories and CG(.zip) files are kept alongside the
+    rezipped file.
+
+    Zipped repositories CC(repo-master.zip) are automatically renamed to the
+    CC(repo-date.tar) with the date of the last modification in the repo.
+
+OPTIONS
+           -h  This help.
+           -n  No zip.
+           -f  Force delete directories and CG(.zip) files after rezipping.
+	  -lz  Lzip format (default).
+         -bz2  Bzip2 format.
+         -zst  Zstd format.
+
+HANDLES
+  CG(directories)  input
+  CG(.gz/.tgz/.Z)  input
+         CG(.bz2)  input/output
+          CG(.xz)  input
+          CG(.lz)  input/output
+         CG(.zst)  input/output
+         CG(.zip)  input
+
+REQUIRES
+     CW(perl,tar)  essential
+    CW(coreutils)  essential (stat,du,ls,mkdir,mv,rm,nice)
+       CW(gunzip)  for CG(.gz) handling
+        CW(unzip)  for CG(.zip) handling
+         CW(unxz)  for CG(.xz) handling
+CW(bzip2/bunzip2)  for CG(.bz2) handling
+  CW(lzip/lunzip)  for CG(.lz) handling
+  CW(zstd/unzstd)  for CG(.zst) handling
+
+VERSION
+    rezip.0.4 (c) R.Jaksa 2020, GPLv3
+
+EOF
+
+$HELPMAN =~ s/\n([A-Z ]+)\n/\n$CC_$1$CD_\n/g;
+$HELPMAN =~ s/\n(\h*)(-[a-z0-9]+)  /\n$1$CC_$2$CD_  /g;
+$HELPMAN =~ s/CC\(([^\(\)]*)\)/$CC_$1$CD_/g;
+$HELPMAN =~ s/CG\(([^\(\)]*)\)/$CG_$1$CD_/g;
+$HELPMAN =~ s/CW\(([^\(\)]*)\)/$CW_$1$CD_/g;
+$HELPMAN =~ s/CK\(([^\(\)]*)\)/$CK_$1$CD_/g;
+# -------------------------------------------------------------------------------- FUNCS
+
+sub error { print STDERR "$CR_$_[0]: $_[1]$CD_\n"; exit 1; }
+
+sub unnl { my $s=$_[0]; $s=~s/\n//; return $s; }
+
+# --------------------------------------------------------------------------------- ARGV
+
+for(@ARGV) { if($_ eq "-h") { print($HELPMAN); exit 0; }}
+for(@ARGV) { if($_ eq "-f") { $FORCE=1; $_=""; last; }}
+
+for(@ARGV) { if($_ eq "-lz")  { $ALG="lz"; $_=""; last; }}
+for(@ARGV) { if($_ eq "-bz2") { $ALG="bz2"; $_=""; last; }}
+for(@ARGV) { if($_ eq "-zst") { $ALG="zst"; $_=""; last; }}
+for(@ARGV) { if($_ eq "-n")   { $ALG="none"; $_=""; last; }}
+
+our @FILE; # input files/dirs
+for(@ARGV) {
+  next if $_ eq "";
+  if   (-f $_)	{ push @FILE,$_; $_=""; }
+  elsif(-d $_)	{ push @FILE,$_; $_=""; }
+  else		{ error "wrong arg",$_; }}
+
+# --------------------------------------------------------------------------------------
+use POSIX qw(floor);
+
+# number to n decimal places
+our sub ndec {
+  my $prec = $_[0]; # no. of decimal places
+  my  $num = $_[1]; # input number
+  my  $out;
+
+  # zero or more decimal places
+  if($prec >= 0) {
+    $out = sprintf "%.${prec}f",$num; }
+
+  # negative decimal places = rounding
+  else {
+    my $nd = 10**(-$prec);
+    $out = int($num/$nd + ($num<0?-0.5:0.5)) * $nd; }
+
+  # clean the tail
+  if($out =~ /\./) {
+    $out =~ s/0+$//;
+    $out =~ s/\.$//; }
+
+  return $out; }
+
+# number to n significant digits 
+our sub nsig {
+  my $prec = $_[0]; # no. of significant digits 
+  my  $num = $_[1]; # input number
+  my  $out;
+
+  # avoid log(0)
+  return "0" if $num==0;
+
+  # avoid negative precision
+  if($prec < 1) {		# neg. prec. request
+    my $p2 = $num =~ tr/0-9//;	# count of digits in the input number
+    $prec = $p2 + $prec;	# reduce the count by neg. prec.
+    $prec = 1 if $prec < 1; }	# if still to negative, use 1
+
+  # no. of integer digits
+  my $z = 1.000000001;
+  $b = 1 + floor(log($num * ($num<0?-$z:$z))/log(10));
+
+  # result
+  $out = ndec($prec-$b,$num);
+  return $out; }
+
+# ----------------------------------------------------------------------------------- LS
+use POSIX qw(strftime);
+
+sub met {
+  my $n = $_[0];
+  my $m = " ";
+  if($n > 1073741824) {
+    $n /= 1073741824;
+    $m = "G"; }
+  elsif($n > 1048576) {
+    $n /= 1048576;
+    $m = "M"; }
+  elsif($n > 1024) {
+    $n /= 1024;
+    $m = "k"; }
+  return nsig(2,$n).$m; }
+
+# return the ls string
+sub printls {
+  my $file = $_[0];
+  return if not -e $file;
+  
+  my $st = unnl `stat -c "%A|%U|%s|%Y|%n|%F|%N|%h" "$file"`;
+  my @st = split /\|/,$st;
+# print "@st\n";
+
+  my $tm = strftime "%Y-%m-%d %H:%M",localtime($st[3]);
+     $tm = "$CK_$tm$CD_";
+
+  my $tp = $st[5]; # file type
+  my $fn = $st[6]; # quoted fullname with symlink name
+  my $hl = $st[7]; # number of hard links (or dir members)
+  my $cc = $CD_;
+  my $sx = "";
+  if($tp eq "directory") {
+    $cc = $CG_;
+    $sx = "$CK_/$CD_"; }
+  elsif($tp =~ /link$/) {
+    $cc = $CC_;
+    $sx = " $CK_->$CD_ $CK_$1$CD_" if $fn =~ / -> '(.*)'$/; }
+  if($hl > 1 and $tp ne "directory") {
+    $cc = $CC_;
+    $sx = " $CK_$hl$CD_"; }
+
+  my $pm = $st[0];
+     $pm =~ /^(.)(.*)$/;
+  my $pp = $1;
+  my $ps = $2;
+     $pp = " " if $pp eq "-";
+#    $pm = "$cc$pp$CD_$CK_$ps$CD_";
+     $pm = "$CK_$ps$CD_";
+     $cc = $CM_ if $1 eq "x";
+
+  # is executable?
+  if($cc eq $CD_) {
+    $ps =~ /^..(.)/;
+    $cc = $CM_ if $1 eq "x"; }
+
+  my $nm = $st[4];
+     $nm = "$cc$nm$CD_$sx";
+
+  my $ow = sprintf "%-8.8s",$st[1];
+  my $co = $CK_;
+     $co = $CR_ if $st[1] eq "root";
+     $ow = "$co$ow$CD_";
+
+  my $sz = $st[2];
+     $sz = `du -B1 $file | cut -f 1` if $tp eq "directory"; # recursive for dirs
+     $sz = sprintf "%7s",met($sz);
+     $sz =~ s/([kMG])$/$CW_$1$CD_/;
+
+  return "$pm $ow $sz $tm $nm"; }
+
+# print "msg ls" without nl
+sub ls1 {
+  my $msg = $_[0];
+  my  $ls = printls $_[1];
+  return if not defined $ls;
+  $msg = "$CK_$msg$CD_ " if defined $msg;
+  print "$msg$ls"; }
+
+# print "msg ls"
+sub ls {
+  ls1 $_[0],$_[1];
+  print "\n"; }
+
+# --------------------------------------------------------------------------------------
+
+sub filename {
+  my $path = $_[0];
+  $path =~ s/^.*\///;
+  return $path; }
+
+# wehave($unz) returns 1 if we already have the unzip or rezip file
+# haveit($unz) returns 1 if we already have the unzip file/directory
+sub wehave {
+  my $unz = $_[0];
+  my $src = $_[1];
+  my $rez = "$unz.$ALG";
+  return $unz if -e $unz;		     # always stop if unzip is not possible
+  return 0 if defined $src and $rez eq $src; # allow rezip to the same format
+  return $rez if -e $rez;		     # stop early if rezip will not be possible
+  return 0; }
+sub haveit {
+  my $pth = $_[0];
+  return $pth if -e $pth;
+  return 0; }
+
+sub unzip {
+  my $src = $_[0];
+  my $unz = $src;
+  my $msg;
+
+  if(-l $src) {
+    return " nothing todo "; }
+
+  elsif(-d $src) {
+    $unz .= ".tar";
+    return " stop: $msg" if $msg = wehave $unz,$src;
+    system "tar","cf",$unz,$src;
+    system "rm","-rf",$src if $FORCE; }
+
+  elsif($src =~ /\.xz$/) {
+    $unz =~ s/\.xz$//;
+    return " stop: $msg" if $msg = wehave $unz,$src;
+    return "" if wehave $unz,$src;
+    system "unxz",$src; }
+
+  elsif($src =~ /\.bz2$/) {
+    $unz =~ s/\.bz2$//;
+    return " stop: $msg" if $msg = wehave $unz,$src;
+    return "" if wehave $unz,$src;
+    system "bunzip2",$src; }
+
+  elsif($src =~ /\.lz$/) {
+    $unz =~ s/\.lz$//;
+    return " stop: $msg" if $msg = wehave $unz,$src;
+    return "" if wehave $unz,$src;
+    system "lunzip",$src; }
+
+  elsif($src =~ /\.zst$/) {
+    $unz =~ s/\.zst$//;
+    return " stop: $msg" if $msg = wehave $unz,$src;
+    return "" if wehave $unz,$src;
+    system "unzstd","--rm","-q",$src; }
+
+  elsif($src =~ /((\.gz)|(\.tgz)|(\.Z))$/) {
+    $unz =~ s/\.Z$//;
+    $unz =~ s/\.gz$//;
+    $unz =~ s/\.tgz$/.tar/;
+    return " stop: $msg" if $msg = wehave $unz,$src;
+    return "" if wehave $unz,$src;
+    system "gunzip",$src; }
+
+  elsif($src =~ /\.zip$/) {
+    $unz =~ s/\.zip$//;			# target directory
+    my $tmp = "$src.rezip";		# temp. directory
+    my $sub = "$tmp/".filename($unz);	# temp. subdirectory name
+
+    return "" if haveit $tmp;
+    system "mkdir",$tmp;
+    system "unzip","-qq",$src,"-d",$tmp;
+
+    # unmaster github zips: rename by the last-modified content date
+    if($sub =~ /-master$/) {
+      my $last = unnl `du -s --time --time-style=+%Y%m%d "$tmp"/* | cut -f 2`;
+      $sub =~ s/-master$/-$last/;
+      $unz =~ s/-master$/-$last/; }
+
+    # unzipped single dir vs. multiple files/dirs
+    my @list = split /\n/,`ls -A $tmp`;
+    if($#list > 0) {
+      system "mkdir",$sub;
+      system "mv \"$tmp\"/* \"$sub\" 2>/dev/null"; }
+    if($#list == 0 and not -d $sub) {
+      system "mv \"$tmp\"/* \"$sub\" 2>/dev/null"; }
+
+    # tar the directory
+    $unz .= ".tar";
+    if($msg = wehave $unz) {		# don't care about $src here
+      system "rm","-rf",$tmp;		# remove tmpdir before the return
+      return " stop: $msg"; }
+    system "tar","cf",$unz,"-C",$tmp,unnl(`ls $tmp`);
+
+    # delete the temp
+    system "rm","-rf",$tmp;
+
+    # force delete the source, as we have the tar now 
+    system "rm","-f",$src if $FORCE; }
+
+  return $unz; }
+
+# ---------------------------------------------------------------------------------- ZIP
+
+sub rezip {
+  my $unz = $_[0];
+  my $rez = "$unz.$ALG";
+  return "" if $ALG eq "none";
+  return "" if haveit $rez;
+
+  if($ALG eq "lz") {
+    system "nice","lzip","-9",$unz; }
+
+  elsif($ALG eq "bz2") {
+    system "nice","bzip2","-9",$unz; }
+
+  elsif($ALG eq "zst") {
+    system "nice","zstd","--rm","-q","-9",$unz; }
+
+  return $rez; }
+
+# --------------------------------------------------------------------------------- MAIN
+
+sub black { return $CK_.$_[0].$CD_; }
+
+print "\n";
+for my $src (@FILE) {
+  my $stop = 0;
+  my $com;
+
+  my $ls = printls $src;
+  my $unz = unzip $src;
+  my $msg = black "trash";
+     $msg = black " keep" if -e $src;
+#    $msg = " keep" if not $FORCE and (-d $src or $src =~ /\.zip$/);
+
+  if($unz eq " nothing todo ") {
+    $msg = black "avoid";
+    $stop = 1; }
+
+  if($unz =~ /^ stop: (.*)$/) {
+    $msg = "${CR_}STOP!$CD_";
+    $com = " $CK_$1 ${CR_}exists$CD_";
+    $stop = 1; }
+
+  print "$msg $ls$com\n";
+  print "\n" and next if $stop;
+  ls "unzip",$unz if not $unz eq $src;
+
+  my $rez = rezip $unz;
+  print "\n" and next if $rez eq "";
+  ls "rezip",$rez if not $rez eq $unz;
+
+  print "\n"; }
+
+# --------------------------------------------------------------------------------------

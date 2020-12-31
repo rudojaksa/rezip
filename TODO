@@ -1,0 +1,5 @@
+ * add decompression/compression times (print them after the ls outputs)
+ * add "in-advance" -master rename (by .zip inspection)
+ * add verbose mode (print commands after the ls outputs)
+ * add prediction-based progress (in separate thread, in place of ls output, using \r to reset)
+ * add -i interactive mode
