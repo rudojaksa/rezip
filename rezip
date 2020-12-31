@@ -18,7 +18,7 @@ our $ALG = "lz"; # default output format
 $HELPMAN=<<EOF;
 
 NAME
-    rezip - rezip file into other (.$ALG) format
+    rezip - rezip file into other format (.$ALG)
 
 USAGE
     rezip [CC(OPTIONS)] CC(FILE)/CC(DIR)...
@@ -26,7 +26,7 @@ USAGE
 DESCRIPTION
     Unzip and zip again input files into specified format.  Unless it is
     requested by CC(-f), directories and CG(.zip) files are kept alongside the
-    rezipped file.
+    rezipped file.  Default target format is CG(.$ALG).
 
     Zipped repositories CC(repo-master.zip) are automatically renamed to the
     CC(repo-date.tar) with the date of the last modification in the repo.
@@ -35,7 +35,7 @@ OPTIONS
            -h  This help.
            -n  No zip.
            -f  Force delete directories and CG(.zip) files after rezipping.
-	  -lz  Lzip format (default).
+	  -lz  Lzip format.
          -bz2  Bzip2 format.
          -zst  Zstd format.
 
@@ -51,11 +51,11 @@ HANDLES
 REQUIRES
      CW(perl,tar)  essential
     CW(coreutils)  essential (stat,du,ls,mkdir,mv,rm,nice)
-       CW(gunzip)  for CG(.gz) handling
+       CW(gunzip)  for CG(.gz)  handling
         CW(unzip)  for CG(.zip) handling
-         CW(unxz)  for CG(.xz) handling
+         CW(unxz)  for CG(.xz)  handling
 CW(bzip2/bunzip2)  for CG(.bz2) handling
-  CW(lzip/lunzip)  for CG(.lz) handling
+  CW(lzip/lunzip)  for CG(.lz)  handling
   CW(zstd/unzstd)  for CG(.zst) handling
 
 INSTALL

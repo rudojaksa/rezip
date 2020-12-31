@@ -1,5 +1,5 @@
 ### NAME
-rezip - rezip file into other (.lz) format
+rezip - rezip file into other format (.lz)
 
 ### USAGE
         rezip [OPTIONS] FILE/DIR...
@@ -7,7 +7,7 @@ rezip - rezip file into other (.lz) format
 ### DESCRIPTION
 Unzip and zip again input files into specified format.  Unless it is
 requested by -f, directories and .zip files are kept alongside the
-rezipped file.
+rezipped file.  Default target format is .lz.
 
 Zipped repositories repo-master.zip are automatically renamed to the
 repo-date.tar with the date of the last modification in the repo.
@@ -16,7 +16,7 @@ repo-date.tar with the date of the last modification in the repo.
                -h  This help.
                -n  No zip.
                -f  Force delete directories and .zip files after rezipping.
-    	  -lz  Lzip format (default).
+    	  -lz  Lzip format.
              -bz2  Bzip2 format.
              -zst  Zstd format.
 
@@ -32,11 +32,11 @@ repo-date.tar with the date of the last modification in the repo.
 ### REQUIRES
          perl,tar  essential
         coreutils  essential (stat,du,ls,mkdir,mv,rm,nice)
-           gunzip  for .gz handling
+           gunzip  for .gz  handling
             unzip  for .zip handling
-             unxz  for .xz handling
+             unxz  for .xz  handling
     bzip2/bunzip2  for .bz2 handling
-      lzip/lunzip  for .lz handling
+      lzip/lunzip  for .lz  handling
       zstd/unzstd  for .zst handling
 
 ### INSTALL
